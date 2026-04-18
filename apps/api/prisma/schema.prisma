@@ -1,0 +1,90 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  customer
+  admin
+}
+
+enum AppointmentStatus {
+  pending_confirmation
+  confirmed
+  cancelled
+}
+
+enum OperationalStatus {
+  pending
+  in_progress
+  completed
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  role         UserRole @default(customer)
+  createdAt    DateTime @default(now())
+
+  appointmentsAsCustomer Appointment[] @relation("CustomerAppointments")
+  auditLogs              AppointmentAuditLog[]
+}
+
+model Service {
+  id               String   @id @default(uuid())
+  name             String
+  durationMinutes  Int
+  priceCents       Int      @default(0)
+  active           Boolean  @default(true)
+  createdAt        DateTime @default(now())
+
+  appointmentLines AppointmentService[]
+}
+
+model Appointment {
+  id            String              @id @default(uuid())
+  customerId    String
+  customer      User                @relation("CustomerAppointments", fields: [customerId], references: [id])
+  startAt       DateTime
+  status        AppointmentStatus   @default(pending_confirmation)
+  confirmedAt   DateTime?
+  notes         String?
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+  createdByRole UserRole
+
+  lines    AppointmentService[]
+  auditLog AppointmentAuditLog[]
+}
+
+model AppointmentService {
+  id                  String              @id @default(uuid())
+  appointmentId       String
+  appointment         Appointment         @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  serviceId           String
+  service             Service             @relation(fields: [serviceId], references: [id])
+  operationalStatus   OperationalStatus   @default(pending)
+  createdAt           DateTime            @default(now())
+
+  @@index([appointmentId])
+  @@index([serviceId])
+}
+
+model AppointmentAuditLog {
+  id            String      @id @default(uuid())
+  appointmentId String
+  appointment   Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  actorUserId   String
+  actor         User        @relation(fields: [actorUserId], references: [id])
+  action        String
+  payloadJson   Json?
+  createdAt     DateTime    @default(now())
+
+  @@index([appointmentId])
+}
