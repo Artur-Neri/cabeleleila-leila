@@ -1,0 +1,288 @@
+:root {
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  line-height: 1.5;
+  color: #1a1a1a;
+  background: #faf7f5;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+a {
+  color: #7c2d12;
+}
+
+a[aria-current="page"] {
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
+
+.text-muted {
+  color: #57534e;
+}
+
+.layout {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 1.25rem;
+}
+
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin: -1.25rem -1.25rem 1.5rem;
+  padding: 0.75rem 1.25rem;
+  background: #fff;
+  border-bottom: 1px solid #e7e5e4;
+  border-radius: 0;
+}
+
+h1 {
+  font-size: 1.35rem;
+  margin: 0;
+}
+
+.card {
+  background: #fff;
+  border-radius: 12px;
+  padding: 1.25rem;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.06);
+  margin-bottom: 1rem;
+}
+
+label {
+  display: block;
+  font-weight: 600;
+  margin: 0.75rem 0 0.25rem;
+}
+
+input,
+select,
+textarea,
+button {
+  font: inherit;
+}
+
+input[type="text"],
+input[type="email"],
+input[type="password"],
+input[type="datetime-local"],
+input[type="date"],
+input[type="number"],
+select,
+textarea {
+  width: 100%;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid #d6cfc9;
+  border-radius: 8px;
+}
+
+button {
+  cursor: pointer;
+  border: none;
+  border-radius: 8px;
+  padding: 0.55rem 1rem;
+  background: #7c2d12;
+  color: #fff;
+  font-weight: 600;
+}
+
+button.secondary {
+  background: #44403c;
+}
+
+button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.error {
+  color: #b91c1c;
+  font-weight: 600;
+}
+
+.success {
+  color: #15803d;
+  font-weight: 600;
+}
+
+.info {
+  color: #92400e;
+  background: #fef3c7;
+  border-radius: 8px;
+  padding: 0.75rem;
+  font-weight: 500;
+}
+
+.login-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.25rem;
+  box-sizing: border-box;
+}
+
+.login-card {
+  width: 100%;
+  max-width: 420px;
+}
+
+.spinner {
+  margin: 0.5rem 0;
+  color: #57534e;
+  font-weight: 500;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+th,
+td {
+  border-bottom: 1px solid #e7e5e4;
+  padding: 0.5rem 0.35rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+th {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #57534e;
+}
+
+.badge {
+  display: inline-block;
+  padding: 0.15rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  background: #e7e5e4;
+  color: #44403c;
+  font-weight: 600;
+}
+
+.badge-pending {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.badge-confirmed {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+.badge-done {
+  background: #e7e5e4;
+  color: #44403c;
+}
+
+.badge-cancelled {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.badge-inprogress {
+  background: #ffedd5;
+  color: #c2410c;
+}
+
+.badge-neutral {
+  background: #e7e5e4;
+  color: #44403c;
+}
+
+.checkbox-grid {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.checkbox-grid label {
+  font-weight: 500;
+  margin: 0;
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.service-option {
+  padding: 0.65rem 0.75rem;
+  border: 1px solid #e7e5e4;
+  border-radius: 10px;
+  background: #fafaf9;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.service-option:has(input:checked) {
+  border-color: #7c2d12;
+  background: #fff7ed;
+}
+
+.service-option .service-option-title {
+  font-weight: 600;
+  flex: 1;
+}
+
+.service-option .service-option-meta {
+  display: block;
+  font-size: 0.8rem;
+  color: #57534e;
+  font-weight: 500;
+  margin-top: 0.15rem;
+}
+
+a.link-pill {
+  display: inline-block;
+  padding: 0.4rem 0.75rem;
+  border: 1px solid #d6cfc9;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+a.link-pill:hover {
+  background: #fff7ed;
+  border-color: #7c2d12;
+}
+
+@media (max-width: 600px) {
+  header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  header .row {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  table {
+    font-size: 0.8rem;
+  }
+
+  th,
+  td {
+    padding: 0.4rem 0.2rem;
+  }
+}
