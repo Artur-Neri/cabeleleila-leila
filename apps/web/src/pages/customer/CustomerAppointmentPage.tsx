@@ -61,6 +61,9 @@ export function CustomerAppointmentPage() {
 
   const a = data.appointment;
   const editable = canCustomerReschedule(new Date(a.startAt), new Date());
+  /** Merge só faz sentido a partir do agendamento mais novo; o destino é sempre o mais antigo da semana. */
+  const canMergeFromHere =
+    data.suggestion && data.suggestion.firstAppointmentId !== a.id;
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
@@ -133,13 +136,24 @@ export function CustomerAppointmentPage() {
             <small>Sugerido: {formatDateTimePtBr(data.suggestion.suggestedStartAt)}</small>
           </p>
           <p style={{ marginBottom: "0.5rem", fontSize: "0.9rem" }}>
-            Clique abaixo para unir os serviços dos dois agendamentos em um só, eliminando
-            duplicatas.
+            {canMergeFromHere ? (
+              <>
+                Clique abaixo para unir os serviços deste agendamento no{" "}
+                <strong>primeiro dia</strong> da semana (o mais antigo), eliminando duplicatas de
+                serviço.
+              </>
+            ) : (
+              <>
+                Este já é o agendamento mais antigo da semana. Para juntar tudo aqui, abra o{" "}
+                <strong>outro</strong> agendamento da mesma semana no histórico e use{" "}
+                <strong>Agregar agendamentos</strong> a partir dele.
+              </>
+            )}
           </p>
           <button
             type="button"
             onClick={mergeIntoFirst}
-            disabled={merging}
+            disabled={merging || !canMergeFromHere}
             style={{ background: "#f97316", color: "#fff", border: "none" }}
           >
             {merging ? "Agregando…" : "Agregar agendamentos"}

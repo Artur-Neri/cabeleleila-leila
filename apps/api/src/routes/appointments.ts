@@ -1,9 +1,27 @@
+import { Prisma } from "@prisma/client";
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 import { AppError } from "../lib/errors.js";
 import { assertStartAtStrictlyInFuture } from "../lib/startAtPolicy.js";
+import {
+  assertSlotAvailable,
+  computeSlotStarts,
+  loadBusyIntervals,
+  totalDurationMinutesFromLines,
+} from "../services/availability.js";
 import { canCustomerReschedule } from "../services/appointmentPolicy.js";
 import { maybeSameWeekSuggestion } from "../services/appointmentSuggestion.js";
+
+const MIN_LEAD_MS = 30_000;
+
+const availabilityQuerySchema = z.object({
+  workStart: z.string().datetime(),
+  workEnd: z.string().datetime(),
+  serviceIds: z
+    .string()
+    .transform((s) => s.split(",").map((x) => x.trim()).filter(Boolean))
+    .pipe(z.array(z.string().uuid()).min(1)),
+});
 
 const createSchema = z.object({
   startAt: z.string().datetime(),
@@ -57,28 +75,53 @@ export const appointmentsRoutes: FastifyPluginAsync = async (fastify) => {
           throw new AppError("INVALID_SERVICES", "Um ou mais serviços são inválidos", 400);
         }
 
+        const durationMinutes = services.reduce((sum, s) => sum + s.durationMinutes, 0);
+        if (durationMinutes <= 0) {
+          throw new AppError("INVALID_SERVICES", "Duração total dos serviços inválida", 400);
+        }
+
         const customerId = request.user.sub;
 
-        const appointment = await r.prisma.appointment.create({
-          data: {
-            customerId,
-            startAt,
-            notes: body.notes,
-            createdByRole: "customer",
-            lines: {
-              create: body.serviceIds.map((serviceId) => ({ serviceId })),
+        try {
+          const appointment = await r.prisma.$transaction(
+            async (tx) => {
+              await assertSlotAvailable(tx, { startAt, durationMinutes });
+              return tx.appointment.create({
+                data: {
+                  customerId,
+                  startAt,
+                  notes: body.notes,
+                  createdByRole: "customer",
+                  lines: {
+                    create: body.serviceIds.map((serviceId) => ({ serviceId })),
+                  },
+                },
+                select: appointmentSelect(),
+              });
             },
-          },
-          select: appointmentSelect(),
-        });
+            {
+              isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+              maxWait: 5000,
+              timeout: 15000,
+            }
+          );
 
-        const suggestion = await maybeSameWeekSuggestion(r.prisma, {
-          customerId,
-          proposedStartAt: startAt,
-          excludeAppointmentId: appointment.id,
-        });
+          const suggestion = await maybeSameWeekSuggestion(r.prisma, {
+            customerId,
+            proposedStartAt: startAt,
+          });
 
-        return { appointment, suggestion };
+          return { appointment, suggestion };
+        } catch (err) {
+          if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2034") {
+            throw new AppError(
+              "SLOT_TAKEN",
+              "Concorrência ao salvar o horário. Escolha outro horário e tente de novo.",
+              409
+            );
+          }
+          throw err;
+        }
       });
 
       r.get("/", async (request) => {
@@ -137,6 +180,43 @@ export const appointmentsRoutes: FastifyPluginAsync = async (fastify) => {
         return { appointments };
       });
 
+      r.get("/availability", async (request) => {
+        const q = availabilityQuerySchema.parse(request.query);
+        const workStart = new Date(q.workStart);
+        const workEnd = new Date(q.workEnd);
+        if (!(workEnd > workStart)) {
+          throw new AppError("INVALID_WINDOW", "Janela de horário inválida", 400);
+        }
+        const windowHours = (workEnd.getTime() - workStart.getTime()) / (60 * 60 * 1000);
+        if (windowHours > 20) {
+          throw new AppError("INVALID_WINDOW", "Janela de horário muito ampla", 400);
+        }
+
+        const services = await r.prisma.service.findMany({
+          where: { id: { in: q.serviceIds }, active: true },
+        });
+        if (services.length !== q.serviceIds.length) {
+          throw new AppError("INVALID_SERVICES", "Um ou mais serviços são inválidos", 400);
+        }
+        const durationMinutes = services.reduce((sum, s) => sum + s.durationMinutes, 0);
+        if (durationMinutes <= 0) {
+          throw new AppError("INVALID_SERVICES", "Duração total dos serviços inválida", 400);
+        }
+
+        const busy = await loadBusyIntervals(r.prisma, { windowStart: workStart, windowEnd: workEnd });
+        const now = new Date();
+        const slots = computeSlotStarts({
+          workStart,
+          workEnd,
+          durationMinutes,
+          busy,
+          now,
+          minLeadMs: MIN_LEAD_MS,
+        });
+
+        return { slots: slots.map((d) => d.toISOString()), durationMinutes };
+      });
+
       r.get("/:id", async (request) => {
         const params = z.object({ id: z.string().uuid() }).parse(request.params);
         const customerId = request.user.sub;
@@ -151,7 +231,6 @@ export const appointmentsRoutes: FastifyPluginAsync = async (fastify) => {
         const suggestion = await maybeSameWeekSuggestion(r.prisma, {
           customerId,
           proposedStartAt: appointment.startAt,
-          excludeAppointmentId: appointment.id,
         });
 
         return { appointment, suggestion };
@@ -164,6 +243,11 @@ export const appointmentsRoutes: FastifyPluginAsync = async (fastify) => {
 
         const existing = await r.prisma.appointment.findFirst({
           where: { id: params.id, customerId },
+          select: {
+            id: true,
+            startAt: true,
+            lines: { select: { service: { select: { durationMinutes: true } } } },
+          },
         });
         if (!existing) {
           throw new AppError("NOT_FOUND", "Agendamento não encontrado", 404);
@@ -191,14 +275,53 @@ export const appointmentsRoutes: FastifyPluginAsync = async (fastify) => {
           );
         }
 
-        const appointment = await r.prisma.appointment.update({
-          where: { id: existing.id },
-          data: {
-            startAt: body.startAt ? new Date(body.startAt) : undefined,
-            notes: body.notes === undefined ? undefined : body.notes,
-          },
-          select: appointmentSelect(),
-        });
+        const durationMinutes = totalDurationMinutesFromLines(existing.lines);
+
+        let appointment;
+        if (body.startAt) {
+          const newStart = new Date(body.startAt);
+          try {
+            appointment = await r.prisma.$transaction(
+              async (tx) => {
+                await assertSlotAvailable(tx, {
+                  startAt: newStart,
+                  durationMinutes,
+                  excludeAppointmentId: existing.id,
+                });
+                return tx.appointment.update({
+                  where: { id: existing.id },
+                  data: {
+                    startAt: newStart,
+                    notes: body.notes === undefined ? undefined : body.notes,
+                  },
+                  select: appointmentSelect(),
+                });
+              },
+              {
+                isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+                maxWait: 5000,
+                timeout: 15000,
+              }
+            );
+          } catch (err) {
+            if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2034") {
+              throw new AppError(
+                "SLOT_TAKEN",
+                "Concorrência ao salvar o horário. Escolha outro horário e tente de novo.",
+                409
+              );
+            }
+            throw err;
+          }
+        } else {
+          appointment = await r.prisma.appointment.update({
+            where: { id: existing.id },
+            data: {
+              notes: body.notes === undefined ? undefined : body.notes,
+            },
+            select: appointmentSelect(),
+          });
+        }
 
         await r.prisma.appointmentAuditLog.create({
           data: {
@@ -212,7 +335,6 @@ export const appointmentsRoutes: FastifyPluginAsync = async (fastify) => {
         const suggestion = await maybeSameWeekSuggestion(r.prisma, {
           customerId,
           proposedStartAt: appointment.startAt,
-          excludeAppointmentId: appointment.id,
         });
 
         return { appointment, suggestion };

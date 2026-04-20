@@ -74,6 +74,7 @@ button {
 input[type="text"],
 input[type="email"],
 input[type="tel"],
+input[type="date"],
 input[type="password"],
 input[type="datetime-local"],
 input[type="date"],
@@ -241,6 +242,33 @@ th {
 .service-option .service-option-title {
   font-weight: 600;
   flex: 1;
+}
+
+.slot-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.slot-btn {
+  padding: 0.45rem 0.75rem;
+  border-radius: 8px;
+  border: 1px solid #d6cfc9;
+  background: #fff;
+  color: #1a1a1a;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.slot-btn:hover {
+  border-color: #7c2d12;
+}
+
+.slot-btn-selected {
+  border-color: #7c2d12;
+  background: #fff7ed;
+  color: #7c2d12;
 }
 
 .service-option .service-option-meta {

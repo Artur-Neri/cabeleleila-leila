@@ -4,37 +4,37 @@ import { sameIsoWeekUtc } from "../lib/isoWeek.js";
 export type SameWeekSuggestion = {
   code: "SAME_WEEK_MULTIPLE";
   message: string;
-  /** Data/hora sugerida: mesmo horário pedido, mas no dia do primeiro agendamento da semana. */
+  /** Data/hora sugerida: mesmo horário do agendamento atual, no dia do primeiro da semana (mais antigo). */
   suggestedStartAt: string;
+  /** Sempre o agendamento com `startAt` mais antigo na mesma semana ISO — destino correto do merge. */
   firstAppointmentId: string;
 };
 
 export async function maybeSameWeekSuggestion(
   prisma: PrismaClient,
-  params: { customerId: string; proposedStartAt: Date; excludeAppointmentId?: string }
+  params: { customerId: string; proposedStartAt: Date }
 ): Promise<SameWeekSuggestion | null> {
-  const { customerId, proposedStartAt, excludeAppointmentId } = params;
+  const { customerId, proposedStartAt } = params;
 
-  const others = await prisma.appointment.findMany({
+  const all = await prisma.appointment.findMany({
     where: {
       customerId,
-      id: excludeAppointmentId ? { not: excludeAppointmentId } : undefined,
       status: { not: "cancelled" },
     },
     select: { id: true, startAt: true },
     orderBy: { startAt: "asc" },
   });
 
-  const sameWeek = others.filter((o) => sameIsoWeekUtc(o.startAt, proposedStartAt));
-  if (sameWeek.length === 0) return null;
+  const inWeek = all.filter((o) => sameIsoWeekUtc(o.startAt, proposedStartAt));
+  if (inWeek.length < 2) return null;
 
-  const first = sameWeek[0];
-  if (!first) return null;
+  const anchor = inWeek[0];
+  if (!anchor) return null;
 
   const firstDayUtc = Date.UTC(
-    first.startAt.getUTCFullYear(),
-    first.startAt.getUTCMonth(),
-    first.startAt.getUTCDate()
+    anchor.startAt.getUTCFullYear(),
+    anchor.startAt.getUTCMonth(),
+    anchor.startAt.getUTCDate()
   );
 
   const proposedTimeMs =
@@ -49,6 +49,6 @@ export async function maybeSameWeekSuggestion(
     message:
       "Detectamos mais de um agendamento na mesma semana. Recomendamos concentrar os serviços no dia do primeiro agendamento dessa semana.",
     suggestedStartAt: suggested.toISOString(),
-    firstAppointmentId: first.id,
+    firstAppointmentId: anchor.id,
   };
 }
