@@ -73,6 +73,7 @@ button {
 
 input[type="text"],
 input[type="email"],
+input[type="tel"],
 input[type="password"],
 input[type="datetime-local"],
 input[type="date"],

@@ -12,7 +12,7 @@ export function isDatetimeLocalStrictlyInFuture(value: string): boolean {
   return new Date(value).getTime() > Date.now();
 }
 
-/** Mantém o mínimo permitido atualizado (ex.: utilizador deixa o formulário aberto). */
+/** Mantém o mínimo permitido atualizado (ex.: usuário deixa o formulário aberto). */
 export function useMinDatetimeLocal(refreshMs = 30000): string {
   const [v, setV] = useState(() => toDatetimeLocalString(new Date()));
   useEffect(() => {

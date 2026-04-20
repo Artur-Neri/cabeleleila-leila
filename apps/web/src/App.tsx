@@ -3,6 +3,7 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import type { Role } from "./context/authTypes";
 import { useAuth } from "./context/AuthContext";
 import { LoginPage } from "./pages/LoginPage";
+import { RegisterPage } from "./pages/RegisterPage";
 import { CustomerLayout } from "./pages/customer/CustomerLayout";
 import { BookPage } from "./pages/customer/BookPage";
 import { HistoryPage } from "./pages/customer/HistoryPage";
@@ -25,6 +26,7 @@ export function App() {
   return (
     <Routes>
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/cadastro" element={<RegisterPage />} />
         <Route
           path="/cliente"
           element={
