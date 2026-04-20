@@ -30,6 +30,7 @@ async function main() {
       email: "admin@demo.local",
       passwordHash: adminHash,
       name: "Leila",
+      phone: "11999990001",
       role: UserRole.admin,
     },
   });
@@ -39,6 +40,7 @@ async function main() {
       email: "cliente@demo.local",
       passwordHash: customerHash,
       name: "Cliente Demo",
+      phone: "11988887777",
       role: UserRole.customer,
     },
   });

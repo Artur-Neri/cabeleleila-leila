@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Navigate } from "react-router-dom";
+import { Link, Navigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 
 export function LoginPage() {
@@ -58,6 +58,9 @@ export function LoginPage() {
           </div>
         </form>
         <p className="text-muted" style={{ fontSize: "0.85rem", marginTop: "1.25rem" }}>
+          Não tem conta? <Link to="/cadastro">Cadastre-se</Link>
+        </p>
+        <p className="text-muted" style={{ fontSize: "0.85rem", marginTop: "0.5rem" }}>
           Contas de demonstração: <code>cliente@demo.local</code> / <code>cliente123</code> ou{" "}
           <code>admin@demo.local</code> / <code>admin123</code>
         </p>

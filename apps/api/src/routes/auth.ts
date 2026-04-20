@@ -10,8 +10,13 @@ const loginSchema = z.object({
 
 const registerSchema = z.object({
   email: z.string().email(),
-  password: z.string().min(6),
-  name: z.string().min(1),
+  password: z.string().min(6, "A senha deve ter pelo menos 6 caracteres"),
+  name: z.string().trim().min(1, "Informe o nome"),
+  phone: z
+    .string()
+    .trim()
+    .min(10, "Informe o telefone com DDD (mínimo 10 caracteres)")
+    .max(20),
 });
 
 export const authRoutes: FastifyPluginAsync = async (fastify) => {
@@ -28,11 +33,11 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
     const token = await reply.jwtSign({ sub: user.id, role: user.role });
     return {
       token,
-      user: { id: user.id, email: user.email, name: user.name, role: user.role },
+      user: { id: user.id, email: user.email, name: user.name, phone: user.phone, role: user.role },
     };
   });
 
-  fastify.post("/auth/register", async (request) => {
+  fastify.post("/auth/register", async (request, reply) => {
     const body = registerSchema.parse(request.body);
     const exists = await fastify.prisma.user.findUnique({ where: { email: body.email } });
     if (exists) {
@@ -44,9 +49,14 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
         email: body.email,
         passwordHash,
         name: body.name,
+        phone: body.phone,
         role: "customer",
       },
     });
-    return { id: user.id, email: user.email, name: user.name, role: user.role };
+    const token = await reply.jwtSign({ sub: user.id, role: user.role });
+    return {
+      token,
+      user: { id: user.id, email: user.email, name: user.name, phone: user.phone, role: user.role },
+    };
   });
 };
