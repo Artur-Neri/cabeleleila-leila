@@ -7,7 +7,7 @@ Monorepo **Node.js**: API **Fastify** + **Prisma** + **PostgreSQL**, front **Rea
 - **Node.js 20+**
 - **Docker Desktop** (recomendado para subir tudo de uma vez)
 
-## Opção A — Docker (um comando)
+## Opção A — Docker
 
 Na raiz do projeto:
 
@@ -75,8 +75,3 @@ npm run dev
 | `npm run test --workspace=api` | Testes unitários da API |
 
 ---
-
-## Documentação
-
-- Decisões de arquitetura: [docs/AULA-DECISOES.md](docs/AULA-DECISOES.md)
-- Pasta para vídeo/capturas: [demo/](demo/)
