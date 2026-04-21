@@ -8,9 +8,16 @@ export type TopService = {
   count: number;
 };
 
+export type RevenueByStatus = Record<AppointmentStatus, number>;
+
 type AppointmentRow = {
   status: AppointmentStatus;
   lines: { serviceId: string; service: { name: string } }[];
+};
+
+type AppointmentRevenueRow = {
+  status: AppointmentStatus;
+  lines: { service: { priceCents: number } }[];
 };
 
 export function aggregateByStatus(appointments: AppointmentRow[]): ByStatusCounts {
@@ -35,4 +42,29 @@ export function topServices(appointments: AppointmentRow[], limit = 10): TopServ
     }
   }
   return [...map.values()].sort((a, b) => b.count - a.count).slice(0, limit);
+}
+
+function sumLinePricesCents(lines: AppointmentRevenueRow["lines"]): number {
+  let sum = 0;
+  for (const l of lines) {
+    sum += l.service.priceCents;
+  }
+  return sum;
+}
+
+/** Soma dos preços dos serviços (catálogo atual) por agendamento, agrupada por estado do agendamento. */
+export function aggregateRevenueByStatus(appointments: AppointmentRevenueRow[]): RevenueByStatus {
+  const revenue: RevenueByStatus = {
+    pending_confirmation: 0,
+    confirmed: 0,
+    cancelled: 0,
+  };
+  for (const a of appointments) {
+    revenue[a.status] += sumLinePricesCents(a.lines);
+  }
+  return revenue;
+}
+
+export function totalRevenueCents(revenue: RevenueByStatus): number {
+  return revenue.pending_confirmation + revenue.confirmed + revenue.cancelled;
 }

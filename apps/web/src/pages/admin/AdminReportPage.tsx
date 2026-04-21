@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { apiFetch } from "../../api/client";
 import { Spinner } from "../../components/Spinner";
 import type { WeeklyReport } from "../../types/admin";
+import { formatBrlFromCents } from "../../utils/formatMoney";
 import { currentIsoWeek, nextWeek, prevWeek } from "../../utils/isoWeek";
 
 const current = currentIsoWeek();
@@ -128,6 +129,36 @@ export function AdminReportPage() {
             />
           </div>
 
+          <h3 style={{ margin: "0 0 0.5rem" }}>Receita na semana</h3>
+          <p className="text-muted" style={{ margin: "0 0 0.75rem", fontSize: "0.85rem" }}>
+            Valores somam o preço atual de cada serviço no catálogo (por linha do agendamento).
+          </p>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))",
+              gap: "0.75rem",
+              marginBottom: "1.5rem",
+            }}
+          >
+            <StatMoneyCard label="Total" cents={data.totals.revenueCents.total} />
+            <StatMoneyCard
+              label="Confirmada"
+              cents={data.totals.revenueCents.byStatus.confirmed}
+              color="#15803d"
+            />
+            <StatMoneyCard
+              label="Pendente"
+              cents={data.totals.revenueCents.byStatus.pending_confirmation}
+              color="#1d4ed8"
+            />
+            <StatMoneyCard
+              label="Em cancelados"
+              cents={data.totals.revenueCents.byStatus.cancelled}
+              color="#b91c1c"
+            />
+          </div>
+
           {data.topServices.length > 0 ? (
             <>
               <h3 style={{ margin: "0 0 0.75rem" }}>Serviços mais solicitados</h3>
@@ -187,6 +218,41 @@ function StatCard({
     >
       <div style={{ fontSize: "1.75rem", fontWeight: 700, color: color ?? "#1a1a1a" }}>
         {value}
+      </div>
+      <div style={{ fontSize: "0.8rem", color: "#57534e", marginTop: "0.15rem" }}>{label}</div>
+    </div>
+  );
+}
+
+function StatMoneyCard({
+  label,
+  cents,
+  color,
+}: {
+  label: string;
+  cents: number;
+  color?: string;
+}) {
+  return (
+    <div
+      style={{
+        background: "#fafaf9",
+        border: "1px solid #e7e5e4",
+        borderRadius: 10,
+        padding: "0.85rem 1rem",
+        textAlign: "center",
+      }}
+    >
+      <div
+        style={{
+          fontSize: "1.2rem",
+          fontWeight: 700,
+          color: color ?? "#1a1a1a",
+          lineHeight: 1.25,
+          wordBreak: "break-word",
+        }}
+      >
+        {formatBrlFromCents(cents)}
       </div>
       <div style={{ fontSize: "0.8rem", color: "#57534e", marginTop: "0.15rem" }}>{label}</div>
     </div>

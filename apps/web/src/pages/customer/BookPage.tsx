@@ -4,6 +4,7 @@ import { apiFetch } from "../../api/client";
 import { Spinner } from "../../components/Spinner";
 import type { Service, Suggestion } from "../../types/api";
 import { formatDateTimePtBr } from "../../utils/formatDateTime";
+import { formatBrlFromCents } from "../../utils/formatMoney";
 
 function localTodayDateStr(): string {
   const d = new Date();
@@ -268,10 +269,7 @@ export function BookPage() {
                     <span className="service-option-title">{s.name}</span>
                     <small className="service-option-meta">
                       {s.durationMinutes} min ·{" "}
-                      {(s.priceCents / 100).toLocaleString("pt-BR", {
-                        style: "currency",
-                        currency: "EUR",
-                      })}
+                      {formatBrlFromCents(s.priceCents)}
                     </small>
                   </span>
                 </label>

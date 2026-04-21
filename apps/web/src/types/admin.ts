@@ -24,6 +24,14 @@ export type WeeklyReport = {
       confirmed: number;
       cancelled: number;
     };
+    revenueCents: {
+      total: number;
+      byStatus: {
+        pending_confirmation: number;
+        confirmed: number;
+        cancelled: number;
+      };
+    };
   };
   topServices: { serviceId: string; name: string; count: number }[];
 };
