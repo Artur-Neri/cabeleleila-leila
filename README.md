@@ -1,6 +1,6 @@
 # Cabeleleila Leila
 
-Monorepo npm: API em `apps/api` (Fastify + Prisma), front-end em `apps/web` (React + Vite).
+API em `apps/api` (Fastify + Prisma), front-end em `apps/web` (React + Vite).
 
 **Requisitos:** Node.js 20+ e Docker Desktop.
 
