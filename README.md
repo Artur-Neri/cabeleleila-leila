@@ -1,6 +1,7 @@
 # Cabeleleila Leila
 
 API em `apps/api` (Fastify + Prisma), front-end em `apps/web` (React + Vite).
+O front-end foi desenhado pelo [Lovable](https://lovable.dev/).
 
 **Requisitos:** Node.js 20+ e Docker Desktop.
 
