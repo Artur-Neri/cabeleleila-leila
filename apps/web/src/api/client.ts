@@ -26,17 +26,36 @@ export async function apiFetch<T>(
     headers.set("Content-Type", "application/json");
     body = JSON.stringify(init.json);
   }
-  const res = await fetch(`${API_BASE}${path}`, { ...init, headers, body });
+
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}${path}`, { ...init, headers, body });
+  } catch {
+    throw new Error("Não foi possível conectar ao servidor. Verifique sua conexão e tente novamente.");
+  }
+
   const text = await res.text();
-  const data = text ? (JSON.parse(text) as unknown) : null;
+  let data: unknown = null;
+  try {
+    data = text ? (JSON.parse(text) as unknown) : null;
+  } catch {
+    throw new Error("Resposta inesperada do servidor. Tente novamente.");
+  }
+
   if (!res.ok) {
     const err = data as ApiErrorBody;
     const fallback =
-      res.status === 404
-        ? "Não encontrado"
-        : res.status >= 500
-          ? "Erro no servidor"
-          : "Não foi possível concluir o pedido";
+      res.status === 401
+        ? "Sessão expirada. Faça login novamente."
+        : res.status === 403
+          ? "Você não tem permissão para realizar esta ação."
+          : res.status === 404
+            ? "Recurso não encontrado."
+            : res.status === 409
+              ? "Conflito ao processar a solicitação."
+              : res.status >= 500
+                ? "Erro interno no servidor. Tente novamente em instantes."
+                : "Não foi possível concluir a solicitação.";
     const message = err?.error?.message ?? fallback;
     const e = new Error(message);
     (e as Error & { status: number; body: unknown }).status = res.status;
