@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { apiFetch } from "../../api/client";
 import { Badge } from "../../components/Badge";
 import { Spinner } from "../../components/Spinner";
-import type { Appointment, Suggestion } from "../../types/api";
+import type { Appointment } from "../../types/api";
 import { isDatetimeLocalStrictlyInFuture, useMinDatetimeLocal } from "../../utils/datetimeLocal";
 import { formatDateTimePtBr } from "../../utils/formatDateTime";
 import { canCustomerReschedule } from "../../utils/policy";
@@ -12,22 +12,17 @@ const MSG_SALVO = "Salvo.";
 
 export function CustomerAppointmentPage() {
   const { id } = useParams();
-  const navigate = useNavigate();
-  const [data, setData] = useState<{ appointment: Appointment; suggestion: Suggestion } | null>(
-    null
-  );
+  const [data, setData] = useState<{ appointment: Appointment } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [startAt, setStartAt] = useState("");
   const [notes, setNotes] = useState("");
   const [msg, setMsg] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [merging, setMerging] = useState(false);
-  const [mergeError, setMergeError] = useState<string | null>(null);
   const minDateTimeLocal = useMinDatetimeLocal(30000);
 
   useEffect(() => {
     if (!id) return;
-    apiFetch<{ appointment: Appointment; suggestion: Suggestion }>(`/appointments/${id}`)
+    apiFetch<{ appointment: Appointment }>(`/appointments/${id}`)
       .then((r) => {
         setData(r);
         const d = new Date(r.appointment.startAt);
@@ -61,9 +56,6 @@ export function CustomerAppointmentPage() {
 
   const a = data.appointment;
   const editable = canCustomerReschedule(new Date(a.startAt), new Date());
-  /** Merge só faz sentido a partir do agendamento mais novo; o destino é sempre o mais antigo da semana. */
-  const canMergeFromHere =
-    data.suggestion && data.suggestion.firstAppointmentId !== a.id;
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
@@ -75,7 +67,7 @@ export function CustomerAppointmentPage() {
     setSaving(true);
     try {
       const iso = new Date(startAt).toISOString();
-      const res = await apiFetch<{ appointment: Appointment; suggestion: Suggestion }>(
+      const res = await apiFetch<{ appointment: Appointment }>(
         `/appointments/${a.id}`,
         { method: "PATCH", json: { startAt: iso, notes } }
       );
@@ -85,23 +77,6 @@ export function CustomerAppointmentPage() {
       setMsg(err instanceof Error ? err.message : "Erro");
     } finally {
       setSaving(false);
-    }
-  }
-
-  async function mergeIntoFirst() {
-    if (!data?.suggestion?.firstAppointmentId || !id) return;
-    setMergeError(null);
-    setMerging(true);
-    try {
-      await apiFetch(`/appointments/${id}/merge`, {
-        method: "POST",
-        json: { targetAppointmentId: data.suggestion.firstAppointmentId },
-      });
-      navigate(`/cliente/agendamento/${data.suggestion.firstAppointmentId}`);
-    } catch (err) {
-      setMergeError(err instanceof Error ? err.message : "Erro ao agregar agendamentos");
-    } finally {
-      setMerging(false);
     }
   }
 
@@ -127,40 +102,6 @@ export function CustomerAppointmentPage() {
           </li>
         ))}
       </ul>
-
-      {data.suggestion ? (
-        <div className="card" style={{ background: "#fff7ed", borderLeft: "4px solid #f97316" }}>
-          <strong>Sugestão</strong>
-          <p>{data.suggestion.message}</p>
-          <p>
-            <small>Sugerido: {formatDateTimePtBr(data.suggestion.suggestedStartAt)}</small>
-          </p>
-          <p style={{ marginBottom: "0.5rem", fontSize: "0.9rem" }}>
-            {canMergeFromHere ? (
-              <>
-                Clique abaixo para unir os serviços deste agendamento no{" "}
-                <strong>primeiro dia</strong> da semana (o mais antigo), eliminando duplicatas de
-                serviço.
-              </>
-            ) : (
-              <>
-                Este já é o agendamento mais antigo da semana. Para juntar tudo aqui, abra o{" "}
-                <strong>outro</strong> agendamento da mesma semana no histórico e use{" "}
-                <strong>Agregar agendamentos</strong> a partir dele.
-              </>
-            )}
-          </p>
-          <button
-            type="button"
-            onClick={mergeIntoFirst}
-            disabled={merging || !canMergeFromHere}
-            style={{ background: "#f97316", color: "#fff", border: "none" }}
-          >
-            {merging ? "Agregando…" : "Agregar agendamentos"}
-          </button>
-          {mergeError ? <p className="error">{mergeError}</p> : null}
-        </div>
-      ) : null}
 
       {!editable ? (
         <p className="info">

@@ -6,13 +6,33 @@ export type SameWeekSuggestion = {
   message: string;
   /** Data/hora sugerida: mesmo horário do agendamento atual, no dia do primeiro da semana (mais antigo). */
   suggestedStartAt: string;
-  /** Sempre o agendamento com `startAt` mais antigo na mesma semana ISO — destino correto do merge. */
+  /** Sempre o agendamento com `startAt` mais antigo na semana ISO — destino correto do merge. */
   firstAppointmentId: string;
 };
 
+/** Usada no GET de detalhe e no PATCH: só sugere se já existem 2+ na semana (situação consolidada). */
 export async function maybeSameWeekSuggestion(
   prisma: PrismaClient,
   params: { customerId: string; proposedStartAt: Date }
+): Promise<SameWeekSuggestion | null> {
+  return _suggestion(prisma, params, 2);
+}
+
+/**
+ * Usada no preview de novo agendamento: sugere se já existe pelo menos 1 ativo na semana,
+ * pois o próximo POST criaria o 2º (ou mais).
+ */
+export async function previewMergeIfAddingAnother(
+  prisma: PrismaClient,
+  params: { customerId: string; proposedStartAt: Date }
+): Promise<SameWeekSuggestion | null> {
+  return _suggestion(prisma, params, 1);
+}
+
+async function _suggestion(
+  prisma: PrismaClient,
+  params: { customerId: string; proposedStartAt: Date },
+  minInWeek: number
 ): Promise<SameWeekSuggestion | null> {
   const { customerId, proposedStartAt } = params;
 
@@ -26,7 +46,7 @@ export async function maybeSameWeekSuggestion(
   });
 
   const inWeek = all.filter((o) => sameIsoWeekUtc(o.startAt, proposedStartAt));
-  if (inWeek.length < 2) return null;
+  if (inWeek.length < minInWeek) return null;
 
   const anchor = inWeek[0];
   if (!anchor) return null;
@@ -47,7 +67,7 @@ export async function maybeSameWeekSuggestion(
   return {
     code: "SAME_WEEK_MULTIPLE",
     message:
-      "Detectamos mais de um agendamento na mesma semana. Recomendamos concentrar os serviços no dia do primeiro agendamento dessa semana.",
+      "Você já tem um agendamento nesta semana. Recomendamos concentrar todos os serviços no mesmo dia.",
     suggestedStartAt: suggested.toISOString(),
     firstAppointmentId: anchor.id,
   };

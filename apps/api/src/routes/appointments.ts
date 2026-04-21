@@ -10,7 +10,10 @@ import {
   totalDurationMinutesFromLines,
 } from "../services/availability.js";
 import { canCustomerReschedule } from "../services/appointmentPolicy.js";
-import { maybeSameWeekSuggestion } from "../services/appointmentSuggestion.js";
+import {
+  maybeSameWeekSuggestion,
+  previewMergeIfAddingAnother,
+} from "../services/appointmentSuggestion.js";
 
 const MIN_LEAD_MS = 30_000;
 
@@ -217,6 +220,18 @@ export const appointmentsRoutes: FastifyPluginAsync = async (fastify) => {
         return { slots: slots.map((d) => d.toISOString()), durationMinutes };
       });
 
+      r.get("/merge-preview", async (request) => {
+        const q = z
+          .object({ proposedStartAt: z.string().datetime() })
+          .parse(request.query);
+        const customerId = request.user.sub;
+        const suggestion = await previewMergeIfAddingAnother(r.prisma, {
+          customerId,
+          proposedStartAt: new Date(q.proposedStartAt),
+        });
+        return { suggestion };
+      });
+
       r.get("/:id", async (request) => {
         const params = z.object({ id: z.string().uuid() }).parse(request.params);
         const customerId = request.user.sub;
@@ -228,12 +243,7 @@ export const appointmentsRoutes: FastifyPluginAsync = async (fastify) => {
           throw new AppError("NOT_FOUND", "Agendamento não encontrado", 404);
         }
 
-        const suggestion = await maybeSameWeekSuggestion(r.prisma, {
-          customerId,
-          proposedStartAt: appointment.startAt,
-        });
-
-        return { appointment, suggestion };
+        return { appointment };
       });
 
       r.patch("/:id", async (request) => {
@@ -332,12 +342,7 @@ export const appointmentsRoutes: FastifyPluginAsync = async (fastify) => {
           },
         });
 
-        const suggestion = await maybeSameWeekSuggestion(r.prisma, {
-          customerId,
-          proposedStartAt: appointment.startAt,
-        });
-
-        return { appointment, suggestion };
+        return { appointment };
       });
 
       r.post("/:id/merge", async (request) => {
