@@ -58,8 +58,18 @@ export async function loadBusyIntervals(
 
 export async function assertSlotAvailable(
   prisma: PrismaClient | Prisma.TransactionClient,
-  params: { startAt: Date; durationMinutes: number; excludeAppointmentId?: string }
+  params: {
+    startAt: Date;
+    durationMinutes: number;
+    excludeAppointmentId?: string;
+    excludeAppointmentIds?: string[];
+  }
 ): Promise<void> {
+  const exclude = new Set<string>();
+  if (params.excludeAppointmentId) exclude.add(params.excludeAppointmentId);
+  if (params.excludeAppointmentIds) {
+    for (const id of params.excludeAppointmentIds) exclude.add(id);
+  }
   const slotEnd = appointmentIntervalEnd(params.startAt, params.durationMinutes);
   const lookback = new Date(params.startAt.getTime() - LOOKBACK_HOURS * 60 * 60 * 1000);
   const appointments = await prisma.appointment.findMany({
@@ -74,7 +84,7 @@ export async function assertSlotAvailable(
     },
   });
   for (const a of appointments) {
-    if (params.excludeAppointmentId && a.id === params.excludeAppointmentId) continue;
+    if (exclude.has(a.id)) continue;
     const aEnd = appointmentIntervalEnd(a.startAt, totalDurationMinutesFromLines(a.lines));
     if (intervalsOverlapHalfOpen(params.startAt, slotEnd, a.startAt, aEnd)) {
       throw new AppError(

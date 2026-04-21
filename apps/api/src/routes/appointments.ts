@@ -15,6 +15,10 @@ import {
   maybeSameWeekSuggestion,
   previewMergeIfAddingAnother,
 } from "../services/appointmentSuggestion.js";
+import {
+  computeSameDayOverlapPlan,
+  filterSameDayServiceOverlap,
+} from "../services/sameDayOverlapMerge.js";
 
 const MIN_LEAD_MS = 30_000;
 
@@ -53,6 +57,171 @@ export const appointmentsRoutes: FastifyPluginAsync = async (fastify) => {
         const startAt = new Date(body.startAt);
         assertStartAtStrictlyInFuture(startAt);
 
+        const customerId = request.user.sub;
+
+        const overlappingAppointments = await r.prisma.appointment.findMany({
+          where: { customerId, status: { not: "cancelled" } },
+          select: { id: true, startAt: true, lines: { select: { serviceId: true } } },
+        });
+
+        const conflicting = filterSameDayServiceOverlap(startAt, body.serviceIds, overlappingAppointments);
+        const sameDayPlan = computeSameDayOverlapPlan(startAt, body.serviceIds, conflicting);
+
+        if (sameDayPlan.kind !== "none") {
+          const unionServices = await r.prisma.service.findMany({
+            where: { id: { in: sameDayPlan.unionServiceIds }, active: true },
+          });
+          if (unionServices.length !== sameDayPlan.unionServiceIds.length) {
+            throw new AppError("INVALID_SERVICES", "Um ou mais serviços são inválidos", 400);
+          }
+          const mergedDurationMinutes = unionServices.reduce((sum, s) => sum + s.durationMinutes, 0);
+          if (mergedDurationMinutes <= 0) {
+            throw new AppError("INVALID_SERVICES", "Duração total dos serviços inválida", 400);
+          }
+
+          try {
+            const appointment = await r.prisma.$transaction(
+              async (tx) => {
+                if (sameDayPlan.kind === "merge_into_existing") {
+                  const target = await tx.appointment.findFirst({
+                    where: { id: sameDayPlan.targetId, customerId },
+                    select: {
+                      id: true,
+                      startAt: true,
+                      lines: { select: { serviceId: true } },
+                    },
+                  });
+                  if (!target) {
+                    throw new AppError("NOT_FOUND", "Agendamento não encontrado", 404);
+                  }
+
+                  const have = new Set(target.lines.map((l) => l.serviceId));
+                  const toAdd = sameDayPlan.unionServiceIds.filter((sid) => !have.has(sid));
+
+                  await assertSlotAvailable(tx, {
+                    startAt: sameDayPlan.anchorStartAt,
+                    durationMinutes: mergedDurationMinutes,
+                    excludeAppointmentIds: [target.id, ...sameDayPlan.cancelIds],
+                  });
+
+                  if (toAdd.length > 0) {
+                    await tx.appointmentService.createMany({
+                      data: toAdd.map((serviceId) => ({
+                        appointmentId: target.id,
+                        serviceId,
+                      })),
+                    });
+                  }
+
+                  if (body.notes !== undefined) {
+                    await tx.appointment.update({
+                      where: { id: target.id },
+                      data: { notes: body.notes },
+                    });
+                  }
+
+                  for (const cancelId of sameDayPlan.cancelIds) {
+                    await tx.appointment.update({
+                      where: { id: cancelId },
+                      data: { status: "cancelled" },
+                    });
+                    await tx.appointmentAuditLog.create({
+                      data: {
+                        appointmentId: cancelId,
+                        actorUserId: customerId,
+                        action: "auto_cancelled_same_day_merge",
+                        payloadJson: { targetAppointmentId: target.id } as object,
+                      },
+                    });
+                  }
+
+                  await tx.appointmentAuditLog.create({
+                    data: {
+                      appointmentId: target.id,
+                      actorUserId: customerId,
+                      action: "received_same_day_merge",
+                      payloadJson: {
+                        addedServiceIds: toAdd,
+                        cancelledAppointmentIds: sameDayPlan.cancelIds,
+                      } as object,
+                    },
+                  });
+
+                  const merged = await tx.appointment.findFirst({
+                    where: { id: target.id },
+                    select: customerAppointmentSelect(),
+                  });
+                  if (!merged) {
+                    throw new AppError("NOT_FOUND", "Agendamento não encontrado", 404);
+                  }
+                  return merged;
+                }
+
+                await assertSlotAvailable(tx, {
+                  startAt: sameDayPlan.anchorStartAt,
+                  durationMinutes: mergedDurationMinutes,
+                  excludeAppointmentIds: sameDayPlan.cancelIds,
+                });
+
+                const created = await tx.appointment.create({
+                  data: {
+                    customerId,
+                    startAt: sameDayPlan.anchorStartAt,
+                    notes: body.notes,
+                    createdByRole: "customer",
+                    lines: {
+                      create: sameDayPlan.unionServiceIds.map((serviceId) => ({ serviceId })),
+                    },
+                  },
+                  select: customerAppointmentSelect(),
+                });
+
+                for (const cancelId of sameDayPlan.cancelIds) {
+                  await tx.appointment.update({
+                    where: { id: cancelId },
+                    data: { status: "cancelled" },
+                  });
+                  await tx.appointmentAuditLog.create({
+                    data: {
+                      appointmentId: cancelId,
+                      actorUserId: customerId,
+                      action: "auto_cancelled_same_day_merge",
+                      payloadJson: { targetAppointmentId: created.id } as object,
+                    },
+                  });
+                }
+
+                await tx.appointmentAuditLog.create({
+                  data: {
+                    appointmentId: created.id,
+                    actorUserId: customerId,
+                    action: "created_same_day_merge",
+                    payloadJson: { cancelledAppointmentIds: sameDayPlan.cancelIds } as object,
+                  },
+                });
+
+                return created;
+              },
+              {
+                isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+                maxWait: 5000,
+                timeout: 15000,
+              }
+            );
+
+            return { appointment, suggestion: null };
+          } catch (err) {
+            if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2034") {
+              throw new AppError(
+                "SLOT_TAKEN",
+                "Concorrência ao salvar o horário. Escolha outro horário e tente de novo.",
+                409
+              );
+            }
+            throw err;
+          }
+        }
+
         const services = await r.prisma.service.findMany({
           where: { id: { in: body.serviceIds }, active: true },
         });
@@ -64,8 +233,6 @@ export const appointmentsRoutes: FastifyPluginAsync = async (fastify) => {
         if (durationMinutes <= 0) {
           throw new AppError("INVALID_SERVICES", "Duração total dos serviços inválida", 400);
         }
-
-        const customerId = request.user.sub;
 
         try {
           const appointment = await r.prisma.$transaction(
@@ -204,12 +371,19 @@ export const appointmentsRoutes: FastifyPluginAsync = async (fastify) => {
 
       r.get("/merge-preview", async (request) => {
         const q = z
-          .object({ proposedStartAt: z.string().datetime() })
+          .object({
+            proposedStartAt: z.string().datetime(),
+            serviceIds: z
+              .string()
+              .transform((s) => s.split(",").map((x) => x.trim()).filter(Boolean))
+              .pipe(z.array(z.string().uuid()).min(1)),
+          })
           .parse(request.query);
         const customerId = request.user.sub;
         const suggestion = await previewMergeIfAddingAnother(r.prisma, {
           customerId,
           proposedStartAt: new Date(q.proposedStartAt),
+          proposedServiceIds: q.serviceIds,
         });
         return { suggestion };
       });

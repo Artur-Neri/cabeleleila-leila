@@ -158,12 +158,15 @@ export function BookPage() {
   // Debounce do preview de merge: dispara 400ms após escolher um horário
   useEffect(() => {
     setPreview(null);
-    if (!selectedSlotIso) return;
+    if (!selectedSlotIso || selectedServiceIds.length === 0) return;
 
     if (previewTimerRef.current) clearTimeout(previewTimerRef.current);
     previewTimerRef.current = setTimeout(async () => {
       try {
-        const qs = new URLSearchParams({ proposedStartAt: selectedSlotIso });
+        const qs = new URLSearchParams({
+          proposedStartAt: selectedSlotIso,
+          serviceIds: selectedServiceIds.join(","),
+        });
         const res = await apiFetch<{ suggestion: Suggestion }>(
           `/appointments/merge-preview?${qs.toString()}`
         );
@@ -176,7 +179,7 @@ export function BookPage() {
     return () => {
       if (previewTimerRef.current) clearTimeout(previewTimerRef.current);
     };
-  }, [selectedSlotIso]);
+  }, [selectedSlotIso, selectedServiceIds]);
 
   function toggle(id: string) {
     setSelected((s) => ({ ...s, [id]: !s[id] }));

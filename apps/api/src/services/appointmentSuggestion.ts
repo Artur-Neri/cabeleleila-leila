@@ -1,5 +1,6 @@
 import type { PrismaClient } from "@prisma/client";
 import { sameIsoWeekUtc } from "../lib/isoWeek.js";
+import { filterSameDayServiceOverlap } from "./sameDayOverlapMerge.js";
 
 export type SameWeekSuggestion = {
   code: "SAME_WEEK_MULTIPLE";
@@ -10,42 +11,13 @@ export type SameWeekSuggestion = {
   firstAppointmentId: string;
 };
 
-/** Usada no GET de detalhe e no PATCH: só sugere se já existem 2+ na semana (situação consolidada). */
-export async function maybeSameWeekSuggestion(
-  prisma: PrismaClient,
-  params: { customerId: string; proposedStartAt: Date }
-): Promise<SameWeekSuggestion | null> {
-  return _suggestion(prisma, params, 2);
-}
-
-/**
- * Usada no preview de novo agendamento: sugere se já existe pelo menos 1 ativo na semana,
- * pois o próximo POST criaria o 2º (ou mais).
- */
-export async function previewMergeIfAddingAnother(
-  prisma: PrismaClient,
-  params: { customerId: string; proposedStartAt: Date }
-): Promise<SameWeekSuggestion | null> {
-  return _suggestion(prisma, params, 1);
-}
-
-async function _suggestion(
-  prisma: PrismaClient,
-  params: { customerId: string; proposedStartAt: Date },
+/** Monta sugestão de “vários na mesma semana” a partir de linhas já carregadas. */
+export function buildSameWeekSuggestion(
+  rows: { id: string; startAt: Date }[],
+  proposedStartAt: Date,
   minInWeek: number
-): Promise<SameWeekSuggestion | null> {
-  const { customerId, proposedStartAt } = params;
-
-  const all = await prisma.appointment.findMany({
-    where: {
-      customerId,
-      status: { not: "cancelled" },
-    },
-    select: { id: true, startAt: true },
-    orderBy: { startAt: "asc" },
-  });
-
-  const inWeek = all.filter((o) => sameIsoWeekUtc(o.startAt, proposedStartAt));
+): SameWeekSuggestion | null {
+  const inWeek = rows.filter((o) => sameIsoWeekUtc(o.startAt, proposedStartAt));
   if (inWeek.length < minInWeek) return null;
 
   const anchor = inWeek[0];
@@ -71,4 +43,52 @@ async function _suggestion(
     suggestedStartAt: suggested.toISOString(),
     firstAppointmentId: anchor.id,
   };
+}
+
+/** Usada no GET de detalhe e no PATCH: só sugere se já existem 2+ na semana (situação consolidada). */
+export async function maybeSameWeekSuggestion(
+  prisma: PrismaClient,
+  params: { customerId: string; proposedStartAt: Date }
+): Promise<SameWeekSuggestion | null> {
+  const { customerId, proposedStartAt } = params;
+
+  const all = await prisma.appointment.findMany({
+    where: {
+      customerId,
+      status: { not: "cancelled" },
+    },
+    select: { id: true, startAt: true },
+    orderBy: { startAt: "asc" },
+  });
+
+  return buildSameWeekSuggestion(all, proposedStartAt, 2);
+}
+
+/**
+ * Preview de novo agendamento: se já existe 1+ na semana ISO, sugere unir — exceto quando
+ * há o mesmo serviço no mesmo dia (nesse caso o POST faz merge automático e não mostramos preview).
+ */
+export async function previewMergeIfAddingAnother(
+  prisma: PrismaClient,
+  params: { customerId: string; proposedStartAt: Date; proposedServiceIds: string[] }
+): Promise<SameWeekSuggestion | null> {
+  const { customerId, proposedStartAt, proposedServiceIds } = params;
+
+  const all = await prisma.appointment.findMany({
+    where: {
+      customerId,
+      status: { not: "cancelled" },
+    },
+    select: { id: true, startAt: true, lines: { select: { serviceId: true } } },
+    orderBy: { startAt: "asc" },
+  });
+
+  const conflicting = filterSameDayServiceOverlap(proposedStartAt, proposedServiceIds, all);
+  if (conflicting.length > 0) return null;
+
+  return buildSameWeekSuggestion(
+    all.map(({ id, startAt }) => ({ id, startAt })),
+    proposedStartAt,
+    1
+  );
 }

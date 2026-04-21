@@ -1,7 +1,11 @@
+import { Prisma } from "@prisma/client";
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 import { AppError } from "../lib/errors.js";
 import { hashPassword, verifyPassword } from "../lib/password.js";
+
+const EMAIL_ALREADY_REGISTERED_MSG =
+  "Já existe um cadastro com este e-mail. Não é possível criar outra conta. Use outro e-mail ou faça login se esta conta for sua.";
 
 const loginSchema = z.object({
   email: z.string().email(),
@@ -41,18 +45,26 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
     const body = registerSchema.parse(request.body);
     const exists = await fastify.prisma.user.findUnique({ where: { email: body.email } });
     if (exists) {
-      throw new AppError("EMAIL_IN_USE", "Este e-mail já está cadastrado", 409);
+      throw new AppError("EMAIL_IN_USE", EMAIL_ALREADY_REGISTERED_MSG, 409);
     }
     const passwordHash = await hashPassword(body.password);
-    const user = await fastify.prisma.user.create({
-      data: {
-        email: body.email,
-        passwordHash,
-        name: body.name,
-        phone: body.phone,
-        role: "customer",
-      },
-    });
+    let user;
+    try {
+      user = await fastify.prisma.user.create({
+        data: {
+          email: body.email,
+          passwordHash,
+          name: body.name,
+          phone: body.phone,
+          role: "customer",
+        },
+      });
+    } catch (e) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
+        throw new AppError("EMAIL_IN_USE", EMAIL_ALREADY_REGISTERED_MSG, 409);
+      }
+      throw e;
+    }
     const token = await reply.jwtSign({ sub: user.id, role: user.role });
     return {
       token,

@@ -9,6 +9,7 @@ export function RegisterPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [emailAlreadyRegistered, setEmailAlreadyRegistered] = useState(false);
   const [loading, setLoading] = useState(false);
 
   if (auth.status === "authenticated") {
@@ -18,11 +19,14 @@ export function RegisterPage() {
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    setEmailAlreadyRegistered(false);
     setLoading(true);
     try {
       await register({ name, phone, email, password });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Não foi possível criar a conta");
+      const e = err as Error & { code?: string };
+      setEmailAlreadyRegistered(e.code === "EMAIL_IN_USE");
+      setError(e.message || "Não foi possível criar a conta");
     } finally {
       setLoading(false);
     }
@@ -75,6 +79,11 @@ export function RegisterPage() {
             minLength={6}
           />
           {error ? <p className="error">{error}</p> : null}
+          {emailAlreadyRegistered ? (
+            <p className="text-muted" style={{ fontSize: "0.9rem", marginTop: "0.35rem" }}>
+              <Link to="/login">Ir para a página de login</Link>
+            </p>
+          ) : null}
           <div className="row" style={{ marginTop: "1rem" }}>
             <button type="submit" disabled={loading}>
               {loading ? "Criando…" : "Cadastrar"}
