@@ -2,15 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { apiFetch } from "../../api/client";
 import { Spinner } from "../../components/Spinner";
-import type { Suggestion } from "../../types/api";
+import type { Service, Suggestion } from "../../types/api";
 import { formatDateTimePtBr } from "../../utils/formatDateTime";
-
-type Service = {
-  id: string;
-  name: string;
-  durationMinutes: number;
-  priceCents: number;
-};
 
 function localTodayDateStr(): string {
   const d = new Date();
@@ -307,8 +300,7 @@ export function BookPage() {
             <>
               {slotDuration != null ? (
                 <p className="text-muted" style={{ marginTop: "0.25rem", fontSize: "0.9rem" }}>
-                  Expediente 9h–18h · duração total {slotDuration} min · intervalos de 15 min. Um horário
-                  some da lista depois de reservado por alguém.
+                  Duração total {slotDuration} min.
                 </p>
               ) : null}
               <div className="slot-grid" role="listbox" aria-label="Horários disponíveis">

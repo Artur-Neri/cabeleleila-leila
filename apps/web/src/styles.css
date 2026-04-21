@@ -295,6 +295,25 @@ a.link-pill:hover {
   border-color: #7c2d12;
 }
 
+/* destaque linha pendente na tabela admin */
+tr.row-pending td {
+  background: #fffbeb;
+}
+
+/* barra proporcional no relatório */
+.bar-track {
+  background: #e7e5e4;
+  border-radius: 4px;
+  height: 8px;
+}
+
+.bar-fill {
+  background: #7c2d12;
+  border-radius: 4px;
+  height: 8px;
+  transition: width 0.3s ease;
+}
+
 @media (max-width: 600px) {
   header {
     flex-direction: column;

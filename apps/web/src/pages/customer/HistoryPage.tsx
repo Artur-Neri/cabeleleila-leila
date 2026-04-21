@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { apiFetch } from "../../api/client";
 import { Badge } from "../../components/Badge";
@@ -6,51 +6,54 @@ import { Spinner } from "../../components/Spinner";
 import type { Appointment } from "../../types/api";
 import { formatDateTimePtBr } from "../../utils/formatDateTime";
 
+function initialFrom(): string {
+  const d = new Date();
+  d.setMonth(d.getMonth() - 1);
+  return d.toISOString().slice(0, 10);
+}
+
+function initialTo(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
 export function HistoryPage() {
-  const [from, setFrom] = useState(() => {
-    const d = new Date();
-    d.setMonth(d.getMonth() - 1);
-    return d.toISOString().slice(0, 10);
-  });
-  const [to, setTo] = useState(() => new Date().toISOString().slice(0, 10));
+  const [from, setFrom] = useState(initialFrom);
+  const [to, setTo] = useState(initialTo);
+
+  // "Applied" = filtro efetivamente carregado; inicializa igual ao campo.
+  // Trocar appliedFrom/To dispara o useEffect abaixo, sem precisar suprimir lint.
+  const [appliedFrom, setAppliedFrom] = useState(initialFrom);
+  const [appliedTo, setAppliedTo] = useState(initialTo);
+
   const [items, setItems] = useState<Appointment[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [initialized, setInitialized] = useState(false);
-
-  const load = useCallback(
-    async (e?: React.FormEvent) => {
-      e?.preventDefault();
-      setError(null);
-      setLoading(true);
-      try {
-        const fromIso = new Date(`${from}T00:00:00.000Z`).toISOString();
-        const toIso = new Date(`${to}T23:59:59.999Z`).toISOString();
-        const res = await apiFetch<{ appointments: Appointment[] }>(
-          `/appointments/history?from=${encodeURIComponent(fromIso)}&to=${encodeURIComponent(toIso)}`
-        );
-        setItems(res.appointments);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Erro");
-        setItems(null);
-      } finally {
-        setLoading(false);
-        setInitialized(true);
-      }
-    },
-    [from, to]
-  );
 
   useEffect(() => {
-    void load();
-    // Apenas período inicial; filtros seguintes usam o botão "Filtrar"
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    let cancelled = false;
+    setError(null);
+    setLoading(true);
+    const fromIso = new Date(`${appliedFrom}T00:00:00.000Z`).toISOString();
+    const toIso = new Date(`${appliedTo}T23:59:59.999Z`).toISOString();
+    apiFetch<{ appointments: Appointment[] }>(
+      `/appointments/history?from=${encodeURIComponent(fromIso)}&to=${encodeURIComponent(toIso)}`
+    )
+      .then((res) => { if (!cancelled) setItems(res.appointments); })
+      .catch((err) => { if (!cancelled) { setError(err instanceof Error ? err.message : "Erro"); setItems(null); } })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [appliedFrom, appliedTo]);
+
+  function onSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setAppliedFrom(from);
+    setAppliedTo(to);
+  }
 
   return (
     <div className="card">
       <h2>Histórico</h2>
-      <form onSubmit={load} className="row" style={{ marginBottom: "1rem" }}>
+      <form onSubmit={onSubmit} className="row" style={{ marginBottom: "1rem" }}>
         <div>
           <label htmlFor="from">De</label>
           <input id="from" type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
@@ -66,9 +69,9 @@ export function HistoryPage() {
         </div>
       </form>
       {error ? <p className="error">{error}</p> : null}
-      {!initialized ? (
+      {loading ? (
         <Spinner />
-      ) : error ? null : items && items.length > 0 ? (
+      ) : items && items.length > 0 ? (
         <table>
           <thead>
             <tr>
@@ -95,9 +98,9 @@ export function HistoryPage() {
             ))}
           </tbody>
         </table>
-      ) : (
+      ) : items !== null ? (
         <p>Sem agendamentos no período.</p>
-      )}
+      ) : null}
     </div>
   );
 }

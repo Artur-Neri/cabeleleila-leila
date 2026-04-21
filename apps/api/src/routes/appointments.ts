@@ -3,6 +3,7 @@ import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 import { AppError } from "../lib/errors.js";
 import { assertStartAtStrictlyInFuture } from "../lib/startAtPolicy.js";
+import { customerAppointmentSelect } from "../lib/appointmentSelect.js";
 import {
   assertSlotAvailable,
   computeSlotStarts,
@@ -40,25 +41,6 @@ const patchCustomerSchema = z.object({
 const mergeSchema = z.object({
   targetAppointmentId: z.string().uuid(),
 });
-
-function appointmentSelect() {
-  return {
-    id: true,
-    startAt: true,
-    status: true,
-    confirmedAt: true,
-    notes: true,
-    createdAt: true,
-    updatedAt: true,
-    lines: {
-      select: {
-        id: true,
-        operationalStatus: true,
-        service: { select: { id: true, name: true, durationMinutes: true, priceCents: true } },
-      },
-    },
-  } as const;
-}
 
 export const appointmentsRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.register(
@@ -99,7 +81,7 @@ export const appointmentsRoutes: FastifyPluginAsync = async (fastify) => {
                     create: body.serviceIds.map((serviceId) => ({ serviceId })),
                   },
                 },
-                select: appointmentSelect(),
+                select: customerAppointmentSelect(),
               });
             },
             {
@@ -150,7 +132,7 @@ export const appointmentsRoutes: FastifyPluginAsync = async (fastify) => {
         const appointments = await r.prisma.appointment.findMany({
           where,
           orderBy: { startAt: "desc" },
-          select: appointmentSelect(),
+          select: customerAppointmentSelect(),
         });
 
         return { appointments };
@@ -177,7 +159,7 @@ export const appointmentsRoutes: FastifyPluginAsync = async (fastify) => {
             startAt: { gte: from, lte: to },
           },
           orderBy: { startAt: "desc" },
-          select: appointmentSelect(),
+          select: customerAppointmentSelect(),
         });
 
         return { appointments };
@@ -237,7 +219,7 @@ export const appointmentsRoutes: FastifyPluginAsync = async (fastify) => {
         const customerId = request.user.sub;
         const appointment = await r.prisma.appointment.findFirst({
           where: { id: params.id, customerId },
-          select: appointmentSelect(),
+          select: customerAppointmentSelect(),
         });
         if (!appointment) {
           throw new AppError("NOT_FOUND", "Agendamento não encontrado", 404);
@@ -304,7 +286,7 @@ export const appointmentsRoutes: FastifyPluginAsync = async (fastify) => {
                     startAt: newStart,
                     notes: body.notes === undefined ? undefined : body.notes,
                   },
-                  select: appointmentSelect(),
+                  select: customerAppointmentSelect(),
                 });
               },
               {
@@ -329,7 +311,7 @@ export const appointmentsRoutes: FastifyPluginAsync = async (fastify) => {
             data: {
               notes: body.notes === undefined ? undefined : body.notes,
             },
-            select: appointmentSelect(),
+            select: customerAppointmentSelect(),
           });
         }
 
@@ -417,7 +399,7 @@ export const appointmentsRoutes: FastifyPluginAsync = async (fastify) => {
 
         const merged = await r.prisma.appointment.findFirst({
           where: { id: target.id },
-          select: appointmentSelect(),
+          select: customerAppointmentSelect(),
         });
 
         return { appointment: merged };

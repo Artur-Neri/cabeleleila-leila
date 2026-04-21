@@ -1,3 +1,10 @@
+export type Service = {
+  id: string;
+  name: string;
+  durationMinutes: number;
+  priceCents: number;
+};
+
 export type AppointmentLine = {
   id: string;
   operationalStatus: string;

@@ -1,39 +1,10 @@
 import { useEffect, useState } from "react";
 import { apiFetch } from "../../api/client";
+import { Spinner } from "../../components/Spinner";
+import type { WeeklyReport } from "../../types/admin";
+import { currentIsoWeek, nextWeek, prevWeek } from "../../utils/isoWeek";
 
-type WeeklyReport = {
-  week: { year: number; week: number; start: string; end: string };
-  totals: {
-    appointments: number;
-    byStatus: {
-      pending_confirmation: number;
-      confirmed: number;
-      cancelled: number;
-    };
-  };
-  topServices: { serviceId: string; name: string; count: number }[];
-};
-
-function getCurrentWeek(): { year: number; week: number } {
-  const now = new Date();
-  const start = new Date(now.getFullYear(), 0, 1);
-  const week = Math.ceil(
-    ((now.getTime() - start.getTime()) / 86400000 + start.getDay() + 1) / 7,
-  );
-  return { year: now.getFullYear(), week };
-}
-
-function prevWeek(year: number, week: number) {
-  if (week === 1) return { year: year - 1, week: 52 };
-  return { year, week: week - 1 };
-}
-
-function nextWeek(year: number, week: number) {
-  if (week === 52) return { year: year + 1, week: 1 };
-  return { year, week: week + 1 };
-}
-
-const current = getCurrentWeek();
+const current = currentIsoWeek();
 
 export function AdminReportPage() {
   const [year, setYear] = useState(current.year);
@@ -42,23 +13,15 @@ export function AdminReportPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function loadData(y: number, w: number) {
+  useEffect(() => {
+    let cancelled = false;
     setLoading(true);
     setError(null);
-    try {
-      const res = await apiFetch<WeeklyReport>(
-        `/reports/weekly?year=${y}&week=${w}`,
-      );
-      setData(res);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Erro ao carregar");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    loadData(year, week);
+    apiFetch<WeeklyReport>(`/reports/weekly?year=${year}&week=${week}`)
+      .then((res) => { if (!cancelled) setData(res); })
+      .catch((err) => { if (!cancelled) setError(err instanceof Error ? err.message : "Erro ao carregar"); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, [year, week]);
 
   const isCurrentWeek = year === current.year && week === current.week;
@@ -79,110 +42,153 @@ export function AdminReportPage() {
     ? `${new Date(data.week.start).toLocaleDateString("pt-BR")} – ${new Date(data.week.end).toLocaleDateString("pt-BR")}`
     : null;
 
+  const maxServiceCount = data?.topServices[0]?.count ?? 1;
+
   return (
     <div className="card">
-      <h2>Desempenho por semana</h2>
+      <h2 style={{ marginTop: 0 }}>Desempenho por semana</h2>
 
-      <div className="row" style={{ justifyContent: "space-between", marginBottom: "1.25rem" }}>
+      <div className="row" style={{ justifyContent: "space-between", marginBottom: "0.25rem" }}>
         <div className="row" style={{ gap: "0.5rem" }}>
-          <button className="secondary" onClick={handlePrev} aria-label="Semana anterior">
+          <button
+            type="button"
+            className="secondary"
+            onClick={handlePrev}
+            aria-label="Semana anterior"
+            style={{ padding: "0.45rem 0.75rem" }}
+          >
             ←
           </button>
           <span style={{ fontWeight: 600, minWidth: 160, textAlign: "center" }}>
             Semana {week} · {year}
           </span>
           <button
+            type="button"
             className="secondary"
             onClick={handleNext}
             disabled={isCurrentWeek}
             aria-label="Próxima semana"
+            style={{ padding: "0.45rem 0.75rem" }}
           >
             →
           </button>
         </div>
-        <button onClick={() => loadData(year, week)} disabled={loading}>
-          {loading ? "Carregando…" : "Carregar"}
-        </button>
+        {isCurrentWeek && (
+          <span
+            style={{
+              fontSize: "0.75rem",
+              fontWeight: 600,
+              background: "#dcfce7",
+              color: "#15803d",
+              borderRadius: "999px",
+              padding: "0.2rem 0.6rem",
+              alignSelf: "center",
+            }}
+          >
+            Semana atual
+          </span>
+        )}
       </div>
 
       {dateRange && (
-        <p className="text-muted" style={{ marginTop: 0 }}>
+        <p className="text-muted" style={{ margin: "0 0 1.25rem", fontSize: "0.85rem" }}>
           {dateRange}
         </p>
       )}
 
-      {error && <p className="error">{error}</p>}
+      {error ? <p className="error">{error}</p> : null}
 
-      {loading && <p className="spinner">Carregando…</p>}
-
-      {!loading && data && (
+      {loading ? (
+        <Spinner label="Carregando…" />
+      ) : data ? (
         <>
-          <div className="row" style={{ gap: "1rem", marginBottom: "1.25rem" }}>
-            <div className="card" style={{ flex: 1, margin: 0, textAlign: "center" }}>
-              <div style={{ fontSize: "2rem", fontWeight: 700 }}>
-                {data.totals.appointments}
-              </div>
-              <div className="text-muted" style={{ fontSize: "0.85rem" }}>
-                Total de agendamentos
-              </div>
-            </div>
-            <div className="card" style={{ flex: 1, margin: 0, textAlign: "center" }}>
-              <div style={{ fontSize: "2rem", fontWeight: 700, color: "#15803d" }}>
-                {data.totals.byStatus.confirmed}
-              </div>
-              <div className="text-muted" style={{ fontSize: "0.85rem" }}>
-                Confirmados
-              </div>
-            </div>
-            <div className="card" style={{ flex: 1, margin: 0, textAlign: "center" }}>
-              <div style={{ fontSize: "2rem", fontWeight: 700, color: "#1d4ed8" }}>
-                {data.totals.byStatus.pending_confirmation}
-              </div>
-              <div className="text-muted" style={{ fontSize: "0.85rem" }}>
-                Pendentes
-              </div>
-            </div>
-            <div className="card" style={{ flex: 1, margin: 0, textAlign: "center" }}>
-              <div style={{ fontSize: "2rem", fontWeight: 700, color: "#b91c1c" }}>
-                {data.totals.byStatus.cancelled}
-              </div>
-              <div className="text-muted" style={{ fontSize: "0.85rem" }}>
-                Cancelados
-              </div>
-            </div>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))",
+              gap: "0.75rem",
+              marginBottom: "1.5rem",
+            }}
+          >
+            <StatCard label="Total" value={data.totals.appointments} />
+            <StatCard
+              label="Confirmados"
+              value={data.totals.byStatus.confirmed}
+              color="#15803d"
+            />
+            <StatCard
+              label="Pendentes"
+              value={data.totals.byStatus.pending_confirmation}
+              color="#1d4ed8"
+            />
+            <StatCard
+              label="Cancelados"
+              value={data.totals.byStatus.cancelled}
+              color="#b91c1c"
+            />
           </div>
 
-          {data.topServices.length > 0 && (
+          {data.topServices.length > 0 ? (
             <>
-              <h3 style={{ marginBottom: "0.5rem" }}>Serviços mais solicitados</h3>
-              <table>
-                <thead>
-                  <tr>
-                    <th>Serviço</th>
-                    <th style={{ width: 80, textAlign: "right" }}>Qtd.</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.topServices.map((s) => (
-                    <tr key={s.serviceId}>
-                      <td>{s.name}</td>
-                      <td style={{ textAlign: "right", fontWeight: 600 }}>{s.count}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <h3 style={{ margin: "0 0 0.75rem" }}>Serviços mais solicitados</h3>
+              <div style={{ display: "flex", flexDirection: "column", gap: "0.65rem" }}>
+                {data.topServices.map((s) => (
+                  <div key={s.serviceId}>
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        fontSize: "0.9rem",
+                        marginBottom: "0.2rem",
+                      }}
+                    >
+                      <span>{s.name}</span>
+                      <span style={{ fontWeight: 700 }}>{s.count}</span>
+                    </div>
+                    <div className="bar-track">
+                      <div
+                        className="bar-fill"
+                        style={{ width: `${(s.count / maxServiceCount) * 100}%` }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
             </>
-          )}
-
-          {data.topServices.length === 0 && (
+          ) : (
             <p className="text-muted">Nenhum serviço registrado nesta semana.</p>
           )}
         </>
-      )}
-
-      {!loading && !data && !error && (
+      ) : !error ? (
         <p className="text-muted">Selecione uma semana para ver o desempenho.</p>
-      )}
+      ) : null}
+    </div>
+  );
+}
+
+function StatCard({
+  label,
+  value,
+  color,
+}: {
+  label: string;
+  value: number;
+  color?: string;
+}) {
+  return (
+    <div
+      style={{
+        background: "#fafaf9",
+        border: "1px solid #e7e5e4",
+        borderRadius: 10,
+        padding: "0.85rem 1rem",
+        textAlign: "center",
+      }}
+    >
+      <div style={{ fontSize: "1.75rem", fontWeight: 700, color: color ?? "#1a1a1a" }}>
+        {value}
+      </div>
+      <div style={{ fontSize: "0.8rem", color: "#57534e", marginTop: "0.15rem" }}>{label}</div>
     </div>
   );
 }

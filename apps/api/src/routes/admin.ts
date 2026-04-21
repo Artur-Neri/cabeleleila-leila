@@ -1,8 +1,10 @@
 import type { FastifyPluginAsync } from "fastify";
+import type { PrismaClient } from "@prisma/client";
 import { z } from "zod";
 import { OperationalStatus, AppointmentStatus } from "@prisma/client";
 import { AppError } from "../lib/errors.js";
 import { assertStartAtStrictlyInFuture } from "../lib/startAtPolicy.js";
+import { adminAppointmentSelect } from "../lib/appointmentSelect.js";
 
 const patchAdminSchema = z.object({
   startAt: z.string().datetime().optional(),
@@ -10,25 +12,16 @@ const patchAdminSchema = z.object({
   notes: z.string().max(2000).nullable().optional(),
 });
 
-function appointmentSelect() {
-  return {
-    id: true,
-    customerId: true,
-    startAt: true,
-    status: true,
-    confirmedAt: true,
-    notes: true,
-    createdAt: true,
-    updatedAt: true,
-    customer: { select: { id: true, name: true, email: true } },
-    lines: {
-      select: {
-        id: true,
-        operationalStatus: true,
-        service: { select: { id: true, name: true, durationMinutes: true, priceCents: true } },
-      },
-    },
-  } as const;
+async function writeAuditLog(
+  prisma: PrismaClient,
+  appointmentId: string,
+  actorUserId: string,
+  action: string,
+  payloadJson: object
+): Promise<void> {
+  await prisma.appointmentAuditLog.create({
+    data: { appointmentId, actorUserId, action, payloadJson },
+  });
 }
 
 export const adminRoutes: FastifyPluginAsync = async (fastify) => {
@@ -42,6 +35,8 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
           .object({
             customerId: z.string().uuid().optional(),
             status: z.nativeEnum(AppointmentStatus).optional(),
+            from: z.string().datetime().optional(),
+            to: z.string().datetime().optional(),
           })
           .parse(request.query);
 
@@ -49,12 +44,28 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
           where: {
             customerId: q.customerId,
             status: q.status,
+            startAt: {
+              gte: q.from ? new Date(q.from) : undefined,
+              lte: q.to ? new Date(q.to) : undefined,
+            },
           },
           orderBy: { startAt: "asc" },
-          select: appointmentSelect(),
+          select: adminAppointmentSelect(),
         });
 
         return { appointments };
+      });
+
+      r.get("/appointments/:id", async (request) => {
+        const params = z.object({ id: z.string().uuid() }).parse(request.params);
+        const appointment = await r.prisma.appointment.findUnique({
+          where: { id: params.id },
+          select: adminAppointmentSelect(),
+        });
+        if (!appointment) {
+          throw new AppError("NOT_FOUND", "Agendamento não encontrado", 404);
+        }
+        return { appointment };
       });
 
       r.patch("/appointments/:id", async (request) => {
@@ -92,17 +103,10 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
         const appointment = await r.prisma.appointment.update({
           where: { id: existing.id },
           data,
-          select: appointmentSelect(),
+          select: adminAppointmentSelect(),
         });
 
-        await r.prisma.appointmentAuditLog.create({
-          data: {
-            appointmentId: appointment.id,
-            actorUserId: actorId,
-            action: "admin_update",
-            payloadJson: body as object,
-          },
-        });
+        await writeAuditLog(r.prisma, appointment.id, actorId, "admin_update", body as object);
 
         return { appointment };
       });
@@ -122,17 +126,10 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
             status: "confirmed",
             confirmedAt: new Date(),
           },
-          select: appointmentSelect(),
+          select: adminAppointmentSelect(),
         });
 
-        await r.prisma.appointmentAuditLog.create({
-          data: {
-            appointmentId: appointment.id,
-            actorUserId: actorId,
-            action: "admin_confirm",
-            payloadJson: {},
-          },
-        });
+        await writeAuditLog(r.prisma, appointment.id, actorId, "admin_confirm", {});
 
         return { appointment };
       });
@@ -163,13 +160,9 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
           },
         });
 
-        await r.prisma.appointmentAuditLog.create({
-          data: {
-            appointmentId: params.id,
-            actorUserId: actorId,
-            action: "admin_service_status",
-            payloadJson: { lineId: params.lineId, operationalStatus: body.operationalStatus },
-          },
+        await writeAuditLog(r.prisma, params.id, actorId, "admin_service_status", {
+          lineId: params.lineId,
+          operationalStatus: body.operationalStatus,
         });
 
         return { line: updated };
